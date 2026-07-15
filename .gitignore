@@ -7,3 +7,4 @@ ckpt_*.pt
 !ckpt.pt
 __pycache__/
 bpe_merges_[0-9]*.json
+make_summary.py
