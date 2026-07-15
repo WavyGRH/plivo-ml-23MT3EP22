@@ -218,8 +218,18 @@ ATTRIBUTION = [
      "violate any evaluation criteria", "H"),
     ("Strategic direction: asked for the option space, then pushed for more "
      "ambition ('look for more ways') rather than accepting safe tuning", "H"),
-    ("Chose the working split (human picks, machine executes) and set "
-     "priorities between runs", "H"),
+    ("Chose the working split (human picks, machine executes), selected which "
+     "experiments ran from the candidate set, and set priorities between runs", "H"),
+    ("<b>Decoupled query/key head dimension (Run 12)</b> &mdash; the hypothesis, "
+     "the rationale (attention routes information and does not need the full "
+     "d_model/h to compute scores, so W<sub>q</sub>/W<sub>k</sub> can shrink "
+     "while values stay wide) and the candidate d_qk values were entirely "
+     "Devangan's, and were not on Claude's candidate list at all", "H"),
+    ("<b>SwiGLU parameter-matching math</b> &mdash; independently derived that "
+     "the expansion factor must drop 4x &rarr; 8/3 to hold 8d&sup2;. This "
+     "surfaced a rounding error in Claude's implementation (rounding hidden UP "
+     "to 432 instead of down to 424) that had silently given SwiGLU a +11,136 "
+     "parameter advantage and would have made Run 10's result unattributable", "H"),
     ("Questions that redirected the work: whether handout files must be "
      "pushed; whether the 2,000-step cap was being honoured; the RMSNorm + "
      "tying cost analysis; and the request to verify committed work against "
@@ -230,7 +240,8 @@ ATTRIBUTION = [
     ("All code: BPE tokenizer and its training, losslessness test suite, "
      "RoPE / RMSNorm / SwiGLU / decoupled-QK attention, trainer refactor, "
      "this summary generator", "M"),
-    ("All hypotheses, experiment design, and run execution", "M"),
+    ("The remaining hypotheses (tokenizer/BPE, weight tying, LR schedule, "
+     "init, context width, RoPE), experiment design, and all run execution", "M"),
     ("All RUNLOG.md analysis and conclusions, including diagnosing and "
      "correcting its own falsified explanation of Run 2", "M"),
     ("Parameter-cap arithmetic; compliance auditing; catching two "
@@ -239,13 +250,26 @@ ATTRIBUTION = [
 ]
 
 ATT_SUMMARY = (
-    "Substantially machine-executed. Every line of code, every hypothesis, and "
-    "every RUNLOG conclusion was produced by Claude Code. The human "
-    "contribution was direction rather than implementation: choosing the "
-    "track and the working method, enforcing the caps and the deadline, "
-    "pushing for ambitious swings over safe tuning, and asking the "
-    "verification questions that caught a disqualification-level risk. "
-    "Presenting this as primarily human work would be false."
+    "<b>Implementation: entirely machine.</b> Every line of code, all run "
+    "execution, and all RUNLOG analysis and conclusions were produced by "
+    "Claude Code (Opus 4.8), including most of the hypotheses &mdash; the "
+    "tokenizer, weight tying, the schedule, context width and RoPE, which "
+    "together account for essentially all of the &minus;26.4%. "
+    "<b>Direction and part of the ideation: human.</b> Devangan chose the "
+    "track and the working method, enforced the caps and the deadline, "
+    "selected which experiments ran, and pushed for ambitious swings over "
+    "safe tuning. Two contributions were substantive rather than "
+    "directional: the decoupled query/key hypothesis (Run 12) was his alone "
+    "and absent from Claude's candidate list, and his derivation of the "
+    "SwiGLU 8/3 parameter-matching requirement caught a rounding error that "
+    "would have made Run 10's result unattributable. His demand to verify the "
+    "committed work against the caps is what surfaced the tied-weight "
+    "double-counting risk. "
+    "<b>Honest characterisation:</b> a human-directed, machine-built "
+    "submission. The score is Claude's work; the choice of what to pursue, "
+    "several of the architectural ideas, and the checks that kept it "
+    "admissible are Devangan's. Claiming the reverse would be false, and the "
+    "brief asks this section to be accurate."
 )
 
 if __name__ == "__main__":
