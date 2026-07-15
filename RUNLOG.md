@@ -248,6 +248,67 @@ which is why Run 9 tests RoPE — where block_size costs *zero* parameters
 
 ---
 
+## Run 7 — block 256 -> 512
+
+**Hypothesis:** Run 4 showed context is worth buying. The question is whether it
+keeps paying at 512, or whether ~840 bytes is already enough for this text.
+Cost is steep and known: 40,960 more params for the pos_emb table (98.7% of
+cap, leaving no headroom for anything else) and quadratic attention.
+
+**What changed:** block_size 256 -> 512. Nothing else.
+
+**Result:** dev **bpb 1.9582** (from 1.9924). **Delta -0.0342.**
+1,974,720 params (98.7% of cap). 438 ms/step, 876s total.
+
+**Conclusion:** Confirmed, still paying, but clearly into diminishing returns —
+128->256 bought -0.0789, 256->512 bought -0.0342, less than half as much for
+2.3x the compute. Effective context is now ~512 x 3.29 = ~1,685 bytes vs the
+baseline's 128. Extrapolating, 512->1024 would be worth perhaps -0.015 for ~40
+minutes of CPU, which the deadline does not justify — so this is where context
+buying stops. The real cost is the pos_emb table: at 98.7% of cap, *nothing
+else can be added to this model*. That is what makes RoPE (Run 9) worth testing
+even if rotary and learned positions score identically — it would refund 81,920
+params and make block_size free.
+
+---
+
+## Run 10 — RMSNorm + SwiGLU (param-matched)
+
+**Hypothesis:** received wisdom says gated MLPs beat GELU at equal parameters,
+and RMSNorm is a free simplification. **Predicted this would lose, or land in
+the noise** — the same "long-run recipe" reasoning that produced Runs 2 and 6,
+both of which failed. Stated the prediction before running it precisely so it
+could be wrong on the record.
+
+**What changed:** LayerNorm -> RMSNorm (drops mean-subtraction and bias, 9 norm
+layers x 160 = 1,440 params saved) and GELU 4x MLP -> SwiGLU. SwiGLU needs three
+matrices where GELU needs two, so the expansion factor drops 4x -> 8/3 to keep
+parameters equal: 3*d*(8d/3) == 8d^2. At d=160 that is 426.67, rounded DOWN to
+424 (a multiple of 8), leaving SwiGLU 5,120 params *below* GELU. Rounding up to
+432 — the first implementation — would have handed it +11,136 params (+0.58%)
+and made any win unattributable. Erring low means a win is the gating, not the
+budget.
+
+**Result:** dev **bpb 1.9858** vs Run 4's 1.9924 at the same block 256.
+**Delta -0.0066**, with **1,928,032 params — 5,728 FEWER than the control.**
+
+**Conclusion:** Confirmed, and the prediction was wrong. The gain is small but
+real: 8x the 0.0008 noise floor, and won while *giving up* capacity, which is
+the strongest form the result could take. Worth being precise about why the
+prediction failed, rather than quietly banking the win. Runs 2 and 6 failed
+because init scale is a *dynamics* choice — small init only pays back over many
+steps, so a 2,000-step budget never collects. Gating is not that kind of choice:
+it changes what the layer can represent per step, and costs nothing to exploit.
+"Long-run wisdom" was never the right category — the question is whether a
+technique's benefit is amortised over steps (init, residual scaling: loses here)
+or available immediately (gating: wins here). That distinction, not the length
+of the run, is what predicts transfer.
+
+Practical value beyond bpb: at 98.7% of cap, a change that *refunds* params is
+worth more than its score suggests.
+
+---
+
 ## Candidate levers (identified, not yet tested)
 
 Ranked by expected effect. Nothing here is a result — these are hypotheses
