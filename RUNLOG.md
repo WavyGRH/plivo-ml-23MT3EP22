@@ -387,6 +387,48 @@ read more and waste less.
 
 ---
 
+## Run 12 — FINAL SHIPPED: decoupled query/key head dim (d_qk 40 -> 24)
+
+**Whose idea:** Devangan's, in full — the hypothesis, the rationale and the
+candidate values. It was not on Claude's candidate list.
+
+**Hypothesis (his):** standard transformers weld the query/key head dim to
+n_embd/n_head (= 40 here), but attention only *routes* information — the value
+path carries the content, so the scores may not need the full 40 dimensions to
+discriminate. Projecting q/k to a narrower d_qk shrinks Wq and Wk while leaving
+Wv and the output projection intact, freeing parameters to spend elsewhere.
+
+**Claude's amendment, and the disagreement worth recording:** his original play
+was to *spend* the freed parameters on n_embd or the MLP. Every result in this
+log argues against that — the model is step-bound, not capacity-bound (Run 0;
+and all three tuning failures), so added capacity is more weights to train in
+the same 2,000 steps, i.e. an *amortised* cost that never collects. The
+prediction was therefore: shrinking Wq/Wk should help **on its own**, because
+fewer parameters means each of the 2,000 steps trains the survivors harder —
+an immediate benefit. Tested that half; banked the savings rather than spending
+them.
+
+**What changed:** d_qk 40 -> 24 (Wq/Wk: 25,600 -> 15,360 each per block; Wv and
+proj untouched). Everything else identical to Run 11.
+
+**Result:** dev **bpb 1.7442** (from Run 11's 1.7463). **Delta -0.0021**, with
+**1,804,640 params — 82,432 fewer** (90.2% of cap vs 94.4%). 646 ms/step.
+
+**Conclusion:** Confirmed, narrowly. -0.0021 is ~2.6x the 0.0008 noise floor —
+real, but small enough that the honest claim is "free, not transformative". The
+substance is that it wins *while removing 4% of the model*: 40 dimensions per
+head were not needed to compute attention scores over this text, and 24 lose
+nothing measurable. Directionally this supports the immediate/amortised rule on
+the parameter axis — trimming weights that were not earning their keep is an
+immediate gain under a step cap — though at this margin the run cannot separate
+"fewer params train better" from "d_qk 40 was simply redundant". Both readings
+point the same way. Untested for time: whether spending the 82,432 refund on
+the MLP would give any of it back (predicted: no).
+
+**Shipped:** this is the final checkpoint. **2.3718 -> 1.7442 = -26.5%.**
+
+---
+
 ## Vocabulary size — costed and rejected on the parameter cap
 
 Not a training run: a measurement, made before spending 17 minutes on one.

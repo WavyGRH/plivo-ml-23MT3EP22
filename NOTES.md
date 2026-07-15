@@ -2,11 +2,12 @@
 
 *(Brief caps this at 10 sentences; RUNLOG.md has every run, including failures.)*
 
-1. **Best configuration — dev bpb 1.7463 vs the baseline's 2.3718 (−26.4%), at
-   1,887,072 parameters (94.4% of the cap) and exactly 2,000 steps:** byte-level
+1. **Best configuration — dev bpb 1.7442 vs the baseline's 2.3718 (−26.5%), at
+   1,804,640 parameters (90.2% of the cap) and exactly 2,000 steps:** byte-level
    BPE trained on the corpus alone (vocab 4,096, 3.49 bytes/token) with the
    output head tied to the token embedding, RoPE, block 512, RMSNorm, SwiGLU at
-   hidden = 8/3·d, over the baseline's own 4 layers × 4 heads × n_embd 160,
+   hidden = 8/3·d, attention with a decoupled query/key head dim of 24 (values
+   stay at 40), over the baseline's own 4 layers × 4 heads × n_embd 160,
    trained with AdamW at peak lr 1e-3, 100-step warmup and cosine decay to zero,
    weight decay 0.1 on matrices only, gradient clipping 1.0, β₂ 0.95,
    init N(0, 0.05), dropout 0.
@@ -35,7 +36,10 @@
    never changed.
 8. Context width paid twice (128→256: −0.0789; 256→512: −0.0342) into clear
    diminishing returns, and RMSNorm+SwiGLU won narrowly (−0.0066) while
-   param-matched *downward* — so that gain is the gating, not extra capacity.
+   param-matched *downward* — so that gain is the gating, not extra capacity;
+   narrowing the query/key head dim to 24 then won again (−0.0021) while
+   removing a further 82,432 parameters, so 40 dimensions per head were never
+   needed to compute attention scores over this text.
 9. **Every attempt to tune a baseline constant failed** (init 0.02 + residual
    scaling: +0.153; init 0.08: +0.070; lr 2e-3: +0.008), so the shipped model is
    still architecturally the baseline's — same depth, width, heads, init,
