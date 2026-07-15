@@ -114,6 +114,76 @@ opposite side.
 
 **Follow-up required:** this bundled two changes, so it does not yet say *which*
 one hurt, or whether one of them helps alone. Runs 2a/2b disentangle them.
+Run 6 tests the inversion: if the diagnosis is right, a *larger* init should win.
+
+---
+
+## Run 3 — byte-level BPE (vocab 4096) + weight tying
+
+**Hypothesis:** Run 0 established that the step budget, not the model, is
+binding: 2,000 steps x 8 x 128 reads only 28% of the corpus, and the model's
+whole view of the world is 128 bytes wide. A byte tokenizer is the cause of
+both. It spends 3 tokens per Devanagari character — and dev is 20.5% Devanagari
+against train's 14.1%, so the eval is *denser* in exactly the text the
+tokenizer handles worst. BPE should raise bytes-per-token ~3x, which buys
+corpus coverage and context width simultaneously without touching the model.
+
+Tying is not a separate idea here, it is the enabling constraint: an untied
+head at vocab 4096 costs 655,360 params and lands at 2,589,120 = 129% of cap.
+Tied, the same config is 1,913,280. **BPE is only legal because of tying** —
+which is what makes the starter's `tie_weights = False` (commented "one of many
+things worth questioning") an effective trap. Left alone, it makes the single
+biggest win look impossible.
+
+**What changed:** tokenizer 256-byte -> BPE vocab 4096 trained on
+train_corpus.txt only (67,014 unique pre-token chunks, 3,840 merges, 15s);
+tie_weights False -> True. Block stays 128. Optimizer as Run 1.
+
+**Result:** dev **bpb 2.0713** (from Run 1's 2.2727). **Delta -0.2014** — twice
+the optimizer's gain. 1,913,280 params (95.7% of cap). 87 ms/step (up from 63:
+the vocab-4096 output head is ~16x the byte model's matmul).
+
+Measured compression: 3.485 bytes/token on train, 3.292 on dev. Corpus
+7,318,592 tokens -> 2,099,764. Eval text 159,225 -> 48,371 tokens.
+
+**Losslessness:** verified before the run, not after — a lossy tokenizer is a
+disqualification, not a bug. test_tokenizer.py round-trips both corpora exactly
+plus 18 edge cases, including emoji, CJK and Arabic (scripts absent from the
+training mix), lone combining marks, control bytes and whitespace runs. All
+exact. The byte fallback is structural: the base vocabulary is all 256 byte
+values, so every byte sequence is representable by construction.
+
+**Conclusion:** Confirmed, and it is the dominant lever. Note *why* it works —
+not because compression is inherently good, but because the binding constraint
+was step count. The same 2,000 steps now read 3.5x more text, and the model's
+context covers ~450 bytes instead of 128. Per-token train loss *rose* (4.70 vs
+1.66) and that is meaningless: a vocab-4096 token carries ~3.5 bytes, so
+per-token loss is not comparable across tokenizers. This is precisely why the
+brief scores bits per *byte*. Any comparison of train loss across a tokenizer
+change is a category error.
+
+---
+
+## Run 4 — block 128 -> 256
+
+**Hypothesis:** Run 3 bought context via bytes-per-token; block_size buys it
+directly. The scorer slides a `cfg.block_size` window with 50% carry-over, so a
+longer block improves the *eval* as well as training. Cost is params
+(block_size x n_embd for the learned pos_emb table) and compute (attention is
+quadratic in T).
+
+**What changed:** block_size 128 -> 256. Nothing else.
+
+**Result:** dev **bpb 1.9924** (from 2.0713). **Delta -0.0789.**
+1,933,760 params (96.7% of cap). 193 ms/step (from 87 — a 2.2x cost).
+
+**Conclusion:** Confirmed and worth its cost. Combined with BPE, effective
+context is now ~256 x 3.29 = ~840 bytes vs the baseline's 128 — a 6.6x widening,
+and the model sees ~1.95 epochs of the corpus rather than 28% of one. Cumulative
+2.3718 -> 1.9924 = **-16%**. The remaining question this raises: at 96.7% of cap
+the learned pos_emb table is now buying context at 40,960 params per doubling,
+which is why Run 9 tests RoPE — where block_size costs *zero* parameters
+(measured: 1,892,800 params at block 256, 512, 1024 and 2048 alike).
 
 ---
 

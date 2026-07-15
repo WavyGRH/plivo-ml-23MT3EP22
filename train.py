@@ -105,6 +105,12 @@ def main():
     ap.add_argument("--resid_scale", action="store_true",
                     help="scale residual projections by 1/sqrt(2*n_layer)")
     ap.add_argument("--tie", action="store_true", help="tie head to tok_emb")
+    ap.add_argument("--norm", choices=["layer", "rms"], default="layer")
+    ap.add_argument("--pos", choices=["learned", "rope"], default="learned")
+    ap.add_argument("--mlp", choices=["gelu", "swiglu"], default="gelu")
+    ap.add_argument("--n_layer", type=int, default=None)
+    ap.add_argument("--n_embd", type=int, default=None)
+    ap.add_argument("--n_head", type=int, default=None)
     ap.add_argument("--seed", type=int, default=1337)
     ap.add_argument("--out", default="ckpt.pt")
     ap.add_argument("--log_every", type=int, default=100)
@@ -129,6 +135,13 @@ def main():
     cfg.tie_weights = args.tie
     cfg.init_std = args.init_std
     cfg.resid_scale = args.resid_scale
+    cfg.norm, cfg.pos, cfg.mlp = args.norm, args.pos, args.mlp
+    if args.n_layer is not None:
+        cfg.n_layer = args.n_layer
+    if args.n_embd is not None:
+        cfg.n_embd = args.n_embd
+    if args.n_head is not None:
+        cfg.n_head = args.n_head
     model = GPT(cfg).to(device)
     n = model.n_params()
     seen = args.steps * args.batch * cfg.block_size
