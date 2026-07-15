@@ -1,3 +1,8 @@
 env/
 llm_handout/
 llm_handout.zip
+CLAUDE.md
+ckpt_baseline.pt
+ckpt_*.pt
+!ckpt.pt
+__pycache__/
