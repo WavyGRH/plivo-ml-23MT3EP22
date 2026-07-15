@@ -228,7 +228,7 @@ ATTRIBUTION = [
     ("Reading the brief; extracting caps, frozen interfaces and deliverables; "
      "corpus measurement (Devanagari share, bytes/token, corpus coverage)", "M"),
     ("All code: BPE tokenizer and its training, losslessness test suite, "
-     "Muon optimizer, RoPE / RMSNorm / SwiGLU, trainer refactor, "
+     "RoPE / RMSNorm / SwiGLU / decoupled-QK attention, trainer refactor, "
      "this summary generator", "M"),
     ("All hypotheses, experiment design, and run execution", "M"),
     ("All RUNLOG.md analysis and conclusions, including diagnosing and "

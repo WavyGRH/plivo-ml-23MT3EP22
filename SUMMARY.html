@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>2,000 Step LLM Speedrun — SUMMARY</title>
+<style>
+  :root { --bg:#fff; --fg:#1a1a1a; --mut:#666; --line:#e3e3e3;
+           --win:#0a7d33; --loss:#c0392b; --card:#fafafa; }
+  @media (prefers-color-scheme:dark) {
+    :root { --bg:#141414; --fg:#e8e8e8; --mut:#999; --line:#2e2e2e;
+             --win:#4ade80; --loss:#f87171; --card:#1c1c1c; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0 auto; padding:2rem 1.25rem 5rem; max-width:52rem;
+         background:var(--bg); color:var(--fg);
+         font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  h1 { font-size:1.9rem; margin:0 0 .25rem; letter-spacing:-.02em; }
+  h2 { font-size:1.25rem; margin:2.75rem 0 .85rem; padding-bottom:.4rem;
+        border-bottom:1px solid var(--line); letter-spacing:-.01em; }
+  h3 { font-size:1rem; margin:0 0 .5rem; }
+  .sub { color:var(--mut); margin:0 0 2rem; }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.88em;
+          background:var(--card); padding:.1em .35em; border-radius:3px; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(8.5rem,1fr));
+           gap:.75rem; margin:1.5rem 0; }
+  .kpi { background:var(--card); border:1px solid var(--line);
+          border-radius:8px; padding:.9rem 1rem; }
+  .kpi .v { font-size:1.5rem; font-weight:640; letter-spacing:-.02em;
+             font-variant-numeric:tabular-nums; }
+  .kpi .l { color:var(--mut); font-size:.75rem; text-transform:uppercase;
+             letter-spacing:.06em; margin-top:.15rem; }
+  .scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  table { border-collapse:collapse; width:100%; font-size:.9rem; }
+  th,td { text-align:left; padding:.5rem .65rem; border-bottom:1px solid var(--line); }
+  th { color:var(--mut); font-weight:600; font-size:.75rem;
+        text-transform:uppercase; letter-spacing:.05em; }
+  .num { text-align:right; font-variant-numeric:tabular-nums;
+          font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  tr.win td:nth-child(3) { color:var(--win); }
+  tr.loss td:nth-child(3) { color:var(--loss); }
+  tr.best td { font-weight:700; }
+  article { background:var(--card); border:1px solid var(--line);
+             border-left:3px solid var(--win); border-radius:0 8px 8px 0;
+             padding:.9rem 1.1rem; margin:.75rem 0; }
+  article.loss { border-left-color:var(--loss); }
+  article p { margin:.4rem 0; font-size:.9rem; }
+  article b { color:var(--mut); font-weight:600; }
+  .bpb { float:right; font-family:ui-monospace,monospace; font-weight:700; }
+  pre { background:var(--card); border:1px solid var(--line); border-radius:8px;
+         padding:1rem; overflow-x:auto; font-size:.85rem; white-space:pre-wrap; }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; }
+  @media (max-width:640px) { .split { grid-template-columns:1fr; } }
+  .att th:first-child { width:40%; }
+</style></head><body>
+
+<h1>2,000 Step LLM Speedrun</h1>
+<p class="sub">Bits per byte on held-out text — lower is better.
+Caps: 2,000 optimizer steps, 2,000,000 parameters, CPU only,
+train_corpus.txt only, pure PyTorch.</p>
+
+<div class="kpis">
+  <div class="kpi"><div class="v">2.3718</div><div class="l">baseline bpb</div></div>
+  <div class="kpi"><div class="v">1.7463</div><div class="l">final bpb</div></div>
+  <div class="kpi"><div class="v">-26.4%</div><div class="l">improvement</div></div>
+  <div class="kpi"><div class="v">1,887,072</div><div class="l">params (94.4% of cap)</div></div>
+  <div class="kpi"><div class="v">2000</div><div class="l">steps (cap 2000)</div></div>
+</div>
+
+<h2>Every scored run</h2>
+<div class="scroll"><table>
+<thead><tr><th>Run</th><th class="num">dev bpb</th><th class="num">vs baseline</th></tr></thead>
+<tbody><tr class=""><td>Run 0 — baseline, untouched</td><td class="num">2.3718</td><td class="num">—</td></tr><tr class="win"><td>Control — refactored trainer, baseline flags</td><td class="num">2.3710</td><td class="num">-0.0008</td></tr><tr class="win"><td>Run 1 — fix the optimizer, nothing else</td><td class="num">2.2727</td><td class="num">-0.0991</td></tr><tr class="loss"><td>Run 2 — add the standard init fix (FAILED, kept deliberately)</td><td class="num">2.4255</td><td class="num">+0.0537</td></tr><tr class="win"><td>Run 5 — LR retune for the BPE regime (FAILED)</td><td class="num">2.0003</td><td class="num">-0.3715</td></tr><tr class="win"><td>Run 6 — invert Run 2: bigger init, not smaller (FAILED)</td><td class="num">2.0626</td><td class="num">-0.3092</td></tr><tr class="win"><td>Run 3 — byte-level BPE (vocab 4096) + weight tying</td><td class="num">2.0713</td><td class="num">-0.3005</td></tr><tr class="win"><td>Run 4 — block 128 -&gt; 256</td><td class="num">1.9924</td><td class="num">-0.3794</td></tr><tr class="win"><td>Run 7 — block 256 -&gt; 512</td><td class="num">1.9582</td><td class="num">-0.4136</td></tr><tr class="win"><td>Run 10 — RMSNorm + SwiGLU (param-matched)</td><td class="num">1.9858</td><td class="num">-0.3860</td></tr><tr class="win"><td>Run 9 — RoPE instead of learned positional embeddings</td><td class="num">1.8184</td><td class="num">-0.5534</td></tr><tr class="win best"><td>Run 11 — FINAL: RoPE + block 512 + RMSNorm + SwiGLU</td><td class="num">1.7463</td><td class="num">-0.6255</td></tr></tbody></table></div>
+
+<h2>Final architecture</h2>
+<div class="scroll"><table>
+<thead><tr><th>Config key</th><th class="num">Value</th></tr></thead>
+<tbody><tr><td><code>block_size</code></td><td class='num'>512</td></tr><tr><td><code>dropout</code></td><td class='num'>0.0</td></tr><tr><td><code>init_std</code></td><td class='num'>0.05</td></tr><tr><td><code>mlp</code></td><td class='num'>swiglu</td></tr><tr><td><code>n_embd</code></td><td class='num'>160</td></tr><tr><td><code>n_head</code></td><td class='num'>4</td></tr><tr><td><code>n_layer</code></td><td class='num'>4</td></tr><tr><td><code>norm</code></td><td class='num'>rms</td></tr><tr><td><code>pos</code></td><td class='num'>rope</td></tr><tr><td><code>resid_scale</code></td><td class='num'>False</td></tr><tr><td><code>tie_weights</code></td><td class='num'>True</td></tr><tr><td><code>vocab_size</code></td><td class='num'>4096</td></tr></tbody></table></div>
+
+<h2>NOTES.md</h2>
+<pre># NOTES — best configuration and why it works
+
+*(Brief caps this at 10 sentences; RUNLOG.md has every run, including failures.)*
+
+1. **Best configuration — dev bpb 1.7463 vs the baseline&#x27;s 2.3718 (−26.4%), at
+   1,887,072 parameters (94.4% of the cap) and exactly 2,000 steps:** byte-level
+   BPE trained on the corpus alone (vocab 4,096, 3.49 bytes/token) with the
+   output head tied to the token embedding, RoPE, block 512, RMSNorm, SwiGLU at
+   hidden = 8/3·d, over the baseline&#x27;s own 4 layers × 4 heads × n_embd 160,
+   trained with AdamW at peak lr 1e-3, 100-step warmup and cosine decay to zero,
+   weight decay 0.1 on matrices only, gradient clipping 1.0, β₂ 0.95,
+   init N(0, 0.05), dropout 0.
+2. Everything follows from one measurement on the baseline: its loss is still
+   falling steeply at step 2,000 and it reads only 28% of its corpus, so the
+   binding constraint is the **step cap**, never model capacity.
+3. **That yields the rule which predicted every architecture result here:** under
+   a hard step cap, a technique wins if its benefit is *immediate* and loses if
+   it is *amortised over steps*, because a 2,000-step budget never collects the
+   latter.
+4. **The tokenizer is the largest lever (−0.2014):** the corpus is 14.1%
+   Devanagari and the eval text 20.5%, and UTF-8 spends three bytes per
+   Devanagari character, so a byte tokenizer burns its context precisely where
+   the evaluation is densest — BPE turns 28% corpus coverage into 3.9 epochs and
+   widens context from 128 bytes to ~1,685.
+5. **Weight tying is not an optimisation, it is what makes BPE legal:** untied,
+   vocab 4,096 costs 2,589,120 parameters (129% of cap); tied, 1,933,760 — so the
+   starter&#x27;s `tie_weights = False` is what makes the biggest win look impossible.
+6. **RoPE is the second largest (−0.1740) and the rule&#x27;s cleanest case:** a
+   learned `pos_emb` must *learn* what each position means before it is useful
+   (amortised), while rotary is correct on step one — RoPE at block 256 beats
+   learned positions at block 512, with fewer parameters and less compute.
+7. **A schedule matters more here than in a normal run (−0.0983):** with no
+   option to train longer, the learning rate must complete its whole job inside
+   2,000 steps, so the baseline&#x27;s defect was never the value 3e-4 but that it
+   never changed.
+8. Context width paid twice (128→256: −0.0789; 256→512: −0.0342) into clear
+   diminishing returns, and RMSNorm+SwiGLU won narrowly (−0.0066) while
+   param-matched *downward* — so that gain is the gating, not extra capacity.
+9. **Every attempt to tune a baseline constant failed** (init 0.02 + residual
+   scaling: +0.153; init 0.08: +0.070; lr 2e-3: +0.008), so the shipped model is
+   still architecturally the baseline&#x27;s — same depth, width, heads, init,
+   dropout and batch size.
+10. Nothing here was made bigger: the same 2,000 steps were simply made to read
+    3.9 epochs instead of 28% of one, and to stop wasting them learning things
+    (position, weight scale) that could be had for free.
+</pre>
+
+<h2>Run-by-run reasoning (12 scored runs)</h2>
+<article class="win"><h3>Run 0 — baseline, untouched <span class="bpb">2.3718</span></h3><p><b>Hypothesis.</b> none. Establish the reference number before changing anything, so every later claim has something to be measured against.</p><p><b>Changed.</b> nothing. Starter code exactly as shipped.</p><p><b>Concluded.</b> The step budget, not the model, is the binding constraint. Two independent things say so: the loss is still falling at step 2000, and the run only ever reads 28% of the corpus. That reframes the problem — the question is not "how do I train this model better" but "how much text and how much context can I get through 2,000 fixed steps". Every lever below is judged by that.</p></article><article class="win"><h3>Control — refactored trainer, baseline flags <span class="bpb">2.3710</span></h3><p><b>Hypothesis.</b> the rewrite of train.py (flags, param groups, LR schedule hooks) changed nothing behavioural. If it did, every later comparison is worthless.</p><p><b>Changed.</b> code structure only. Same hyperparameters as Run 0. One deliberate difference: batch sampling moved to its own <code>torch.Generator</code>, decoupling data order from model-init RNG, so the batch sequence is not bit-identical to Run 0.</p><p><b>Concluded.</b> The refactor is faithful; the 0.0008 gap is the batch-order change, and it sets the noise floor for this setup. Any effect below ~0.001 bpb is not distinguishable from seed noise and will not be claimed as a result.</p></article><article class="win"><h3>Run 1 — fix the optimizer, nothing else <span class="bpb">2.2727</span></h3><p><b>Hypothesis.</b> Run 0's curve is still descending at the cap because a constant 3e-4 never anneals. With steps hard-capped, an LR schedule is worth more here than in a normal run: there is no "train longer" to fall back on, so the LR must do its whole job inside 2,000 steps. Warmup should permit a higher peak safely.</p><p><b>Changed.</b> Adam -> AdamW, lr 3e-4 -> 1e-3, constant -> cosine decay to 0, 100-step warmup, weight decay 0.1 (matrices only, not norms/biases/embeddings), grad clipping 1.0, beta2 0.999 -> 0.95. Tokenizer, model and data untouched.</p><p><b>Concluded.</b> Confirmed, and cheap — ~4% of the baseline's bpb for zero parameters and zero extra compute. The annealed tail is doing the work: the model spends its last few hundred steps consolidating at a small LR instead of bouncing around at 3e-4. This is the "free" part of the budget; everything after it has to buy its gains with parameters or wall-clock.</p></article><article class="loss"><h3>Run 2 — add the standard init fix (FAILED, kept deliberately) <span class="bpb">2.4255</span></h3><p><b>Hypothesis.</b> Run 0's init is flat N(0, 0.05) on every tensor with no depth-awareness. The textbook GPT-2 recipe is std 0.02 plus scaling residual projections by 1/sqrt(2*n_layer) so the residual stream's variance does not grow with depth. Expected a small but reliable gain on top of Run 1.</p><p><b>Changed.</b> init_std 0.05 -> 0.02, plus 1/sqrt(2*n_layer) scaling on attn.proj and mlp[2]. Everything else identical to Run 1.</p></article><article class="win"><h3>Run 5 — LR retune for the BPE regime (FAILED) <span class="bpb">2.0003</span></h3><p><b>Hypothesis.</b> lr 1e-3 was tuned in Run 1 against the *byte* model. Run 3 changed the vocabulary 16-fold and tied the head to the embedding, which is a materially different loss surface — the earlier optimum should have moved.</p><p><b>Changed.</b> lr 1e-3 -> 2e-3. Everything else as Run 4.</p><p><b>Concluded.</b> Rejected, but only just — +0.0079 is small, though ~10x the 0.0008 noise floor established by the Control, so it is a real if minor regression. The premise was reasonable and simply did not hold: 1e-3 survives the tokenizer change intact. Worth noting the asymmetry in what tuning bought here — the *schedule* (Run 1) was worth -0.0983, while the *peak value* it anneals from is already right. The baseline's defect was never the number 3e-4; it was that the number never changed.</p></article><article class="win"><h3>Run 6 — invert Run 2: bigger init, not smaller (FAILED) <span class="bpb">2.0626</span></h3><p><b>Hypothesis.</b> stated above, from Run 2's first conclusion. If a short budget punishes small init because the model wastes steps growing weights, then init_std 0.08 should beat 0.05.</p><p><b>Changed.</b> init_std 0.05 -> 0.08, no residual scaling. Otherwise Run 4.</p><p><b>Concluded.</b> Prediction falsified — see Run 2's revised conclusion, which this run forced. The value of this run is entirely negative-result: it killed a plausible, confident, wrong story. Had it not been run, Run 2's explanation would have gone into the write-up sounding authoritative and being unsupported.</p></article><article class="win"><h3>Run 3 — byte-level BPE (vocab 4096) + weight tying <span class="bpb">2.0713</span></h3><p><b>Hypothesis.</b> Run 0 established that the step budget, not the model, is binding: 2,000 steps x 8 x 128 reads only 28% of the corpus, and the model's whole view of the world is 128 bytes wide. A byte tokenizer is the cause of both. It spends 3 tokens per Devanagari character — and dev is 20.5% Devanagari against train's 14.1%, so the eval is *denser* in exactly the text the tokenizer handles worst. BPE should raise bytes-per-token ~3x, which buys corpus coverage and context width simultaneously without touching the model.</p><p><b>Changed.</b> tokenizer 256-byte -> BPE vocab 4096 trained on train_corpus.txt only (67,014 unique pre-token chunks, 3,840 merges, 15s); tie_weights False -> True. Block stays 128. Optimizer as Run 1.</p><p><b>Concluded.</b> Confirmed, and it is the dominant lever. Note *why* it works — not because compression is inherently good, but because the binding constraint was step count. The same 2,000 steps now read 3.5x more text, and the model's context covers ~450 bytes instead of 128. Per-token train loss *rose* (4.70 vs 1.66) and that is meaningless: a vocab-4096 token carries ~3.5 bytes, so per-token loss is not comparable across tokenizers. This is precisely why the brief scores bits per *byte*. Any comparison of train loss across a tokenizer change is a category error.</p></article><article class="win"><h3>Run 4 — block 128 -&gt; 256 <span class="bpb">1.9924</span></h3><p><b>Hypothesis.</b> Run 3 bought context via bytes-per-token; block_size buys it directly. The scorer slides a <code>cfg.block_size</code> window with 50% carry-over, so a longer block improves the *eval* as well as training. Cost is params (block_size x n_embd for the learned pos_emb table) and compute (attention is quadratic in T).</p><p><b>Changed.</b> block_size 128 -> 256. Nothing else.</p><p><b>Concluded.</b> Confirmed and worth its cost. Combined with BPE, effective context is now ~256 x 3.29 = ~840 bytes vs the baseline's 128 — a 6.6x widening, and the model sees ~1.95 epochs of the corpus rather than 28% of one. Cumulative 2.3718 -> 1.9924 = <strong>-16%</strong>. The remaining question this raises: at 96.7% of cap the learned pos_emb table is now buying context at 40,960 params per doubling, which is why Run 9 tests RoPE — where block_size costs *zero* parameters (measured: 1,892,800 params at block 256, 512, 1024 and 2048 alike).</p></article><article class="win"><h3>Run 7 — block 256 -&gt; 512 <span class="bpb">1.9582</span></h3><p><b>Hypothesis.</b> Run 4 showed context is worth buying. The question is whether it keeps paying at 512, or whether ~840 bytes is already enough for this text. Cost is steep and known: 40,960 more params for the pos_emb table (98.7% of cap, leaving no headroom for anything else) and quadratic attention.</p><p><b>Changed.</b> block_size 256 -> 512. Nothing else.</p><p><b>Concluded.</b> Confirmed, still paying, but clearly into diminishing returns — 128->256 bought -0.0789, 256->512 bought -0.0342, less than half as much for 2.3x the compute. Effective context is now ~512 x 3.29 = ~1,685 bytes vs the baseline's 128. Extrapolating, 512->1024 would be worth perhaps -0.015 for ~40 minutes of CPU, which the deadline does not justify — so this is where context buying stops. The real cost is the pos_emb table: at 98.7% of cap, *nothing else can be added to this model*. That is what makes RoPE (Run 9) worth testing even if rotary and learned positions score identically — it would refund 81,920 params and make block_size free.</p></article><article class="win"><h3>Run 10 — RMSNorm + SwiGLU (param-matched) <span class="bpb">1.9858</span></h3><p><b>Hypothesis.</b> received wisdom says gated MLPs beat GELU at equal parameters, and RMSNorm is a free simplification. <strong>Predicted this would lose, or land in the noise</strong> — the same "long-run recipe" reasoning that produced Runs 2 and 6, both of which failed. Stated the prediction before running it precisely so it could be wrong on the record.</p><p><b>Changed.</b> LayerNorm -> RMSNorm (drops mean-subtraction and bias, 9 norm layers x 160 = 1,440 params saved) and GELU 4x MLP -> SwiGLU. SwiGLU needs three matrices where GELU needs two, so the expansion factor drops 4x -> 8/3 to keep parameters equal: 3*d*(8d/3) == 8d^2. At d=160 that is 426.67, rounded DOWN to 424 (a multiple of 8), leaving SwiGLU 5,120 params *below* GELU. Rounding up to 432 — the first implementation — would have handed it +11,136 params (+0.58%) and made any win unattributable. Erring low means a win is the gating, not the budget.</p><p><b>Concluded.</b> Confirmed, and the prediction was wrong. The gain is small but real: 8x the 0.0008 noise floor, and won while *giving up* capacity, which is the strongest form the result could take. Worth being precise about why the prediction failed, rather than quietly banking the win. Runs 2 and 6 failed because init scale is a *dynamics* choice — small init only pays back over many steps, so a 2,000-step budget never collects. Gating is not that kind of choice: it changes what the layer can represent per step, and costs nothing to exploit. "Long-run wisdom" was never the right category — the question is whether a technique's benefit is amortised over steps (init, residual scaling: loses here) or available immediately (gating: wins here). That distinction, not the length of the run, is what predicts transfer.</p></article><article class="win"><h3>Run 9 — RoPE instead of learned positional embeddings <span class="bpb">1.8184</span></h3><p><b>Hypothesis.</b> two reasons, one budgetary and one about learning dynamics. Budget: the learned pos_emb table costs block_size x n_embd, so at block 512 it is 81,920 params and the model sits at 98.7% of cap with no headroom for anything else; RoPE has *no* position parameters, and is block-size independent (measured: 1,892,800 params at block 256, 512, 1024 and 2048 alike). Dynamics: Run 10's rule says techniques whose benefit is *immediate* win under a step cap while *amortised* ones lose — and a learned pos_emb is amortised almost by definition, because every row must be trained before it means anything.</p><p><b>Changed.</b> pos = learned -> rope. Block stays 256, so the comparison is against Run 4's 1.9924 directly. Nothing else touched.</p><p><b>Concluded.</b> Confirmed, and larger than expected. The headline comparison is the one worth keeping: <strong>RoPE at block 256 (1.8184) beats learned positions at block 512 (1.9582)</strong> — a better score with half the context, less compute and fewer parameters. Buying context by widening a learned table was the expensive way to solve a problem that was really about *how* position is represented.</p></article><article class="win"><h3>Run 11 — FINAL: RoPE + block 512 + RMSNorm + SwiGLU <span class="bpb">1.7463</span></h3><p><b>Hypothesis.</b> combine the three winners. Expected ~1.78 by naive addition of their measured deltas, while flagging in advance that they would *not* simply add: RoPE already fixes how position is represented, which is arguably part of what widening the context was compensating for, so block 512's contribution should shrink once RoPE does that job properly.</p><p><b>Changed.</b> RoPE + block 512 + RMSNorm + SwiGLU together, on the Run 1 optimizer. Tokenizer BPE-4096 tied, as since Run 3.</p><p><b>Concluded.</b> Better than the -0.0721 the parts predicted from Run 9's 1.8184, so the caution about non-additivity was right in direction but wrong in sign — they reinforced rather than overlapped. The likely reason is that they relieve *different* bottlenecks: RoPE fixes position representation, block 512 supplies more of it to represent, and SwiGLU adds per-step expressiveness to use it. None of the three is amortised; all three pay from step one, which is why they stack.</p></article>
+
+<h2>Machine-done vs human-done</h2>
+<p>The brief permits AI coding assistants and requires this section to be
+honest, so it is written to be accurate rather than flattering. This work used
+Claude Code (Opus 4.8) throughout.</p>
+<div class="scroll"><table class="att">
+<thead><tr><th>Contribution</th><th>By</th></tr></thead>
+<tbody><tr><td>Track selection; environment setup and verification; repo and remote</td><td><b>Human</b></td></tr><tr><td>Deadline discipline and submission constraints; instruction not to violate any evaluation criteria</td><td><b>Human</b></td></tr><tr><td>Strategic direction: asked for the option space, then pushed for more ambition ('look for more ways') rather than accepting safe tuning</td><td><b>Human</b></td></tr><tr><td>Chose the working split (human picks, machine executes) and set priorities between runs</td><td><b>Human</b></td></tr><tr><td>Questions that redirected the work: whether handout files must be pushed; whether the 2,000-step cap was being honoured; the RMSNorm + tying cost analysis; and the request to verify committed work against the caps &mdash; which is what surfaced the tied-weight double-counting risk</td><td><b>Human</b></td></tr><tr><td>Reading the brief; extracting caps, frozen interfaces and deliverables; corpus measurement (Devanagari share, bytes/token, corpus coverage)</td><td><b>Machine</b></td></tr><tr><td>All code: BPE tokenizer and its training, losslessness test suite, RoPE / RMSNorm / SwiGLU / decoupled-QK attention, trainer refactor, this summary generator</td><td><b>Machine</b></td></tr><tr><td>All hypotheses, experiment design, and run execution</td><td><b>Machine</b></td></tr><tr><td>All RUNLOG.md analysis and conclusions, including diagnosing and correcting its own falsified explanation of Run 2</td><td><b>Machine</b></td></tr><tr><td>Parameter-cap arithmetic; compliance auditing; catching two self-inflicted bugs (overwriting modules mid-run; queueing runs on a known-bad config)</td><td><b>Machine</b></td></tr></tbody></table></div>
+<p><b>Summary in one line:</b> Substantially machine-executed. Every line of code, every hypothesis, and every RUNLOG conclusion was produced by Claude Code. The human contribution was direction rather than implementation: choosing the track and the working method, enforcing the caps and the deadline, pushing for ambitious swings over safe tuning, and asking the verification questions that caught a disqualification-level risk. Presenting this as primarily human work would be false.</p>
+
+</body></html>

@@ -55,18 +55,6 @@ def build_optimizer(model, args):
     if args.opt == "adam":
         return [torch.optim.Adam(model.parameters(), lr=args.lr)]
 
-    if args.opt == "muon":
-        from optim import Muon, split_params
-        muon_p, other_p = split_params(model)
-        n_m = sum(p.numel() for p in muon_p)
-        n_o = sum(p.numel() for p in other_p)
-        print(f"muon: {len(muon_p)} matrices / {n_m:,} params | "
-              f"adamw: {len(other_p)} tensors / {n_o:,} params")
-        return [Muon(muon_p, lr=args.muon_lr, momentum=args.muon_momentum,
-                     ns_steps=args.ns_steps, weight_decay=args.wd),
-                torch.optim.AdamW(other_p, lr=args.lr, weight_decay=0.0,
-                                  betas=(args.beta1, args.beta2))]
-
     # Decay only matrices; leave norms, biases and embeddings undecayed.
     decay, no_decay = [], []
     for name, p in model.named_parameters():
@@ -88,12 +76,7 @@ def main():
                     help="sequence length; default = Config.block_size")
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--min_lr", type=float, default=0.0)
-    ap.add_argument("--opt", choices=["adam", "adamw", "muon"], default="adam")
-    ap.add_argument("--muon_lr", type=float, default=0.02,
-                    help="Muon lr for 2D hidden matrices (--lr still drives "
-                         "the AdamW group holding embeddings/norms/biases)")
-    ap.add_argument("--muon_momentum", type=float, default=0.95)
-    ap.add_argument("--ns_steps", type=int, default=5)
+    ap.add_argument("--opt", choices=["adam", "adamw"], default="adam")
     ap.add_argument("--schedule", choices=["none", "cosine", "linear"],
                     default="none")
     ap.add_argument("--warmup", type=int, default=0)
@@ -154,8 +137,8 @@ def main():
     assert n <= MAX_PARAMS, f"cap: max {MAX_PARAMS:,} params (got {n:,})"
 
     opts = build_optimizer(model, args)
-    # Each group keeps its own base LR (Muon's differs from AdamW's by ~20x),
-    # and the schedule scales all of them by the same factor.
+    # Each group keeps its own base LR, and the schedule scales all of them by
+    # the same factor.
     for o in opts:
         for g in o.param_groups:
             g["base_lr"] = g["lr"]

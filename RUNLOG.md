@@ -130,10 +130,15 @@ directions, which is why the inversion failed too. The brief calls the baseline
 "mediocre on purpose"; that does not mean every line of it is wrong, and
 assuming so cost two runs.
 
-**Still unresolved:** Run 2 bundled init_std AND resid_scale, so it cannot say
-which half did the damage, or whether resid_scale alone is harmless. Runs 2a/2b
-isolate them. Bundling two changes in one run was a methodology error — the
-brief says change one thing at a time, and this is what it costs when you do not.
+**Limitation of this run:** it changed two things at once, so **the -0.1528 is
+attributed to the bundle, not to either half** — this entry cannot say whether
+init_std 0.02, the residual scaling, or their interaction did the damage.
+Bundling was a methodology error; the brief says change one thing at a time, and
+the cost is exactly this: a large, reproducible result that cannot be assigned a
+cause. Run 6 recovers part of it — init_std 0.08 alone, without residual
+scaling, also loses — which establishes that init_std is independently sensitive
+in both directions. Residual scaling in isolation is not something this log has
+a measurement for, and no claim is made about it.
 
 ---
 
@@ -349,10 +354,70 @@ context becomes a pure compute decision.
 
 ---
 
-## Candidate levers (identified, not yet tested)
+## Run 11 — FINAL: RoPE + block 512 + RMSNorm + SwiGLU
 
-Ranked by expected effect. Nothing here is a result — these are hypotheses
-awaiting runs, listed so the log shows what was considered and what was
+**Hypothesis:** combine the three winners. Expected ~1.78 by naive addition of
+their measured deltas, while flagging in advance that they would *not* simply
+add: RoPE already fixes how position is represented, which is arguably part of
+what widening the context was compensating for, so block 512's contribution
+should shrink once RoPE does that job properly.
+
+**What changed:** RoPE + block 512 + RMSNorm + SwiGLU together, on the Run 1
+optimizer. Tokenizer BPE-4096 tied, as since Run 3.
+
+**Result:** dev **bpb 1.7463**. **1,887,072 params (94.4% of cap), 2,000 steps.**
+500 ms/step, 1001s. Sees 8,192,000 tokens = **390% of the corpus (3.9 epochs)**
+against the baseline's 28% of one.
+
+**vs baseline: 2.3718 -> 1.7463 = -0.6255 = -26.4%.**
+
+**Conclusion:** Better than the -0.0721 the parts predicted from Run 9's 1.8184,
+so the caution about non-additivity was right in direction but wrong in sign —
+they reinforced rather than overlapped. The likely reason is that they relieve
+*different* bottlenecks: RoPE fixes position representation, block 512 supplies
+more of it to represent, and SwiGLU adds per-step expressiveness to use it. None
+of the three is amortised; all three pay from step one, which is why they stack.
+
+Worth stating what the final model is **not**: it is still 4 layers, 4 heads,
+n_embd 160, init 0.05, dropout 0, batch 8 — every one of those is the baseline's
+own value, because every attempt to change them lost. The entire -26.4% comes
+from the tokenizer, the schedule, the positional scheme, the context width and
+the MLP form. Nothing was made bigger; the same 2,000 steps were simply made to
+read more and waste less.
+
+---
+
+## Vocabulary size — costed and rejected on the parameter cap
+
+Not a training run: a measurement, made before spending 17 minutes on one.
+Merges were trained at 1024 / 2048 / 4096 / 8192 (15-60s each) and each
+vocabulary was costed against the final architecture and measured for
+compression on dev_eval.txt:
+
+| vocab | params @ final config | % of cap | bytes/token | context @ block 512 |
+|------:|----------------------:|---------:|------------:|--------------------:|
+| 1,024 | 1,395,552 | 69.8% | 2.690 | 1,377 bytes |
+| 2,048 | 1,559,392 | 78.0% | 3.009 | 1,540 bytes |
+| **4,096** | **1,887,072** | **94.4%** | **3.292** | **1,685 bytes** |
+| 8,192 | 2,542,432 | **127.1%** | 3.582 | *(disqualified)* |
+
+**Conclusion: 4,096 is the largest vocabulary the cap permits, and the cap is
+what decides this.** 8,192 is the only option that compresses better than the
+one shipped — 3.582 bytes/token, another ~9% of context — and it is 542,432
+params over the limit at n_embd 160, which no other saving available here comes
+close to closing. Every affordable alternative moves the *wrong way on the lever
+that dominates this whole problem*: 2,048 gives up 8.6% of context and 1,024
+gives up 18%, and both "buy" parameters this model cannot use, because the
+binding constraint is steps, not capacity (Run 0, and every failed tuning run
+since). So the vocabulary was not swept — the swept axis would have cost ~17
+minutes per point to confirm a direction the cap and the compression numbers
+already settle.
+
+---
+
+## Candidate levers (considered, not tested — no results claimed)
+
+Nothing here is a result. Listed so the log shows what was considered and
 rejected, not only what happened to work.
 
 1. **Tokenizer -> byte-level BPE.** Corpus is 14.1% Devanagari, dev is 20.5%.
