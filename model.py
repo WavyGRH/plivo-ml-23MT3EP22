@@ -1,6 +1,7 @@
-"""A small GPT in plain PyTorch. Yours to modify or replace entirely —
-attention, SSM, whatever — as long as evaluate.py still works and the
-parameter cap holds.
+"""A small GPT in plain PyTorch.
+
+Anything public on Config is saved into the checkpoint by train.py and restored
+by evaluate.py, so new knobs ride along automatically.
 """
 import math
 
@@ -16,7 +17,9 @@ class Config:
     n_head = 4
     n_embd = 160
     dropout = 0.0
-    tie_weights = False   # <- one of many things worth questioning
+    tie_weights = False
+    init_std = 0.05       # baseline: one std for every tensor
+    resid_scale = False   # scale residual projections by 1/sqrt(2*n_layer)
 
 
 class SelfAttention(nn.Module):
@@ -67,11 +70,18 @@ class GPT(nn.Module):
         if cfg.tie_weights:
             self.head.weight = self.tok_emb.weight
         self.apply(self._init)
+        if getattr(cfg, "resid_scale", False):
+            # GPT-2 style: shrink what each block adds back to the residual
+            # stream, so the stream's variance does not grow with depth.
+            scale = 1.0 / math.sqrt(2 * cfg.n_layer)
+            for blk in self.blocks:
+                nn.init.normal_(blk.attn.proj.weight, 0.0, cfg.init_std * scale)
+                nn.init.normal_(blk.mlp[2].weight, 0.0, cfg.init_std * scale)
 
     def _init(self, m):
-        # baseline init: plain normal, one std for everything
+        std = getattr(self.cfg, "init_std", 0.05)
         if isinstance(m, (nn.Linear, nn.Embedding)):
-            nn.init.normal_(m.weight, mean=0.0, std=0.05)
+            nn.init.normal_(m.weight, mean=0.0, std=std)
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.zeros_(m.bias)
 

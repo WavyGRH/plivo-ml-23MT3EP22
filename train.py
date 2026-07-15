@@ -1,6 +1,4 @@
-"""Baseline trainer. It WORKS and it is MEDIOCRE ON PURPOSE. Your hour goes
-into changing what it does — schedule, init, optimizer, architecture,
-tokenizer — inside the hard caps.
+"""Trainer for the 2,000 step speedrun.
 
 HARD CAPS (checked at grading, violations = disqualified run):
   * max 2,000 optimizer steps in the run that produces your checkpoint
@@ -8,9 +6,15 @@ HARD CAPS (checked at grading, violations = disqualified run):
   * training text: the provided train_corpus.txt only
   * pure PyTorch / numpy / stdlib; no pretrained anything
 
-    python train.py --data ../data/train_corpus.txt --steps 2000 --out ckpt.pt
+Every deviation from the baseline is a flag with a baseline-preserving default,
+so any run in RUNLOG.md can be reproduced exactly:
+
+    # exact baseline
+    python train.py --data llm_handout/data/train_corpus.txt --steps 2000 \
+        --out ckpt_baseline.pt
 """
 import argparse
+import math
 import time
 
 import torch
@@ -22,11 +26,43 @@ MAX_STEPS = 2000
 MAX_PARAMS = 2_000_000
 
 
-def get_batch(ids, block, batch, device):
-    ix = torch.randint(len(ids) - block - 1, (batch,))
+def get_batch(ids, block, batch, device, generator):
+    ix = torch.randint(len(ids) - block - 1, (batch,), generator=generator)
     x = torch.stack([ids[i:i + block] for i in ix])
     y = torch.stack([ids[i + 1:i + 1 + block] for i in ix])
     return x.to(device), y.to(device)
+
+
+def lr_at(step, args):
+    """Warmup then decay. step is 1-based."""
+    if args.warmup > 0 and step <= args.warmup:
+        return args.lr * step / args.warmup
+    if args.schedule == "none":
+        return args.lr
+    progress = (step - args.warmup) / max(1, args.steps - args.warmup)
+    progress = min(1.0, max(0.0, progress))
+    if args.schedule == "cosine":
+        scale = 0.5 * (1.0 + math.cos(math.pi * progress))
+    elif args.schedule == "linear":
+        scale = 1.0 - progress
+    else:
+        raise ValueError(args.schedule)
+    return args.min_lr + (args.lr - args.min_lr) * scale
+
+
+def build_optimizer(model, args):
+    if args.opt == "adam":
+        return torch.optim.Adam(model.parameters(), lr=args.lr)
+    # Decay only matrices; leave norms, biases and embeddings undecayed.
+    decay, no_decay = [], []
+    for name, p in model.named_parameters():
+        if not p.requires_grad:
+            continue
+        (decay if p.dim() >= 2 and "emb" not in name else no_decay).append(p)
+    return torch.optim.AdamW(
+        [{"params": decay, "weight_decay": args.wd},
+         {"params": no_decay, "weight_decay": 0.0}],
+        lr=args.lr, betas=(args.beta1, args.beta2))
 
 
 def main():
@@ -34,56 +70,89 @@ def main():
     ap.add_argument("--data", required=True)
     ap.add_argument("--steps", type=int, default=2000)
     ap.add_argument("--batch", type=int, default=8)
+    ap.add_argument("--block", type=int, default=None,
+                    help="sequence length; default = Config.block_size")
     ap.add_argument("--lr", type=float, default=3e-4)
+    ap.add_argument("--min_lr", type=float, default=0.0)
+    ap.add_argument("--opt", choices=["adam", "adamw"], default="adam")
+    ap.add_argument("--schedule", choices=["none", "cosine", "linear"],
+                    default="none")
+    ap.add_argument("--warmup", type=int, default=0)
+    ap.add_argument("--wd", type=float, default=0.0)
+    ap.add_argument("--clip", type=float, default=0.0, help="0 = off")
+    ap.add_argument("--beta1", type=float, default=0.9)
+    ap.add_argument("--beta2", type=float, default=0.999)
+    ap.add_argument("--init_std", type=float, default=0.05)
+    ap.add_argument("--resid_scale", action="store_true",
+                    help="scale residual projections by 1/sqrt(2*n_layer)")
+    ap.add_argument("--tie", action="store_true", help="tie head to tok_emb")
     ap.add_argument("--seed", type=int, default=1337)
     ap.add_argument("--out", default="ckpt.pt")
     ap.add_argument("--log_every", type=int, default=100)
     args = ap.parse_args()
+
     assert args.steps <= MAX_STEPS, f"cap: max {MAX_STEPS} steps"
     torch.manual_seed(args.seed)
+    gen = torch.Generator().manual_seed(args.seed)
     device = "cpu"
 
     text = open(args.data, encoding="utf-8").read()
     tok = tokenizer_mod.load()
     ids = torch.tensor(tok.encode(text), dtype=torch.long)
-    print(f"corpus: {len(text.encode('utf-8')):,} bytes -> {len(ids):,} tokens "
-          f"(vocab {tok.vocab_size})")
+    n_bytes = len(text.encode("utf-8"))
+    print(f"corpus: {n_bytes:,} bytes -> {len(ids):,} tokens "
+          f"(vocab {tok.vocab_size}, {n_bytes/len(ids):.2f} bytes/token)")
 
     cfg = Config()
     cfg.vocab_size = tok.vocab_size
+    if args.block is not None:
+        cfg.block_size = args.block
+    cfg.tie_weights = args.tie
+    cfg.init_std = args.init_std
+    cfg.resid_scale = args.resid_scale
     model = GPT(cfg).to(device)
     n = model.n_params()
-    print(f"model: {n:,} params")
-    assert n <= MAX_PARAMS, f"cap: max {MAX_PARAMS:,} params"
+    seen = args.steps * args.batch * cfg.block_size
+    print(f"model: {n:,} params ({n/MAX_PARAMS*100:.1f}% of cap) | "
+          f"block {cfg.block_size} batch {args.batch} | "
+          f"will see {seen:,} tokens = {seen/len(ids)*100:.1f}% of corpus")
+    assert n <= MAX_PARAMS, f"cap: max {MAX_PARAMS:,} params (got {n:,})"
 
-    # baseline choices, all questionable on purpose:
-    opt = torch.optim.Adam(model.parameters(), lr=args.lr)  # constant LR,
-    # no warmup, no schedule, no weight decay, no gradient clipping.
+    opt = build_optimizer(model, args)
 
     model.train()
     t0 = time.time()
     losses = []
     for step in range(1, args.steps + 1):
-        x, y = get_batch(ids, cfg.block_size, args.batch, device)
+        lr = lr_at(step, args)
+        for g in opt.param_groups:
+            g["lr"] = lr
+        x, y = get_batch(ids, cfg.block_size, args.batch, device, gen)
         _, loss = model(x, y)
         opt.zero_grad(set_to_none=True)
         loss.backward()
+        if args.clip > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
         opt.step()
         losses.append(loss.item())
         if step % args.log_every == 0 or step == 1:
             avg = sum(losses[-args.log_every:]) / len(losses[-args.log_every:])
-            print(f"step {step:5d}  loss {avg:.4f}  "
+            print(f"step {step:5d}  loss {avg:.4f}  lr {lr:.2e}  "
                   f"({(time.time()-t0)/step*1000:.0f} ms/step)")
 
-    # every public config attribute is saved — if you add fields to Config,
-    # they ride along automatically and evaluate.py rebuilds the same model
     torch.save({"model": model.state_dict(),
                 "config": {k: getattr(cfg, k) for k in dir(cfg)
                            if not k.startswith("_")
                            and not callable(getattr(cfg, k))},
                 "steps": args.steps,
-                "train_loss_curve": losses}, args.out)
-    print(f"saved {args.out}  ({time.time()-t0:.0f}s total)")
+                "train_loss_curve": losses,
+                # plain dict, not Namespace: evaluate.py loads with
+                # weights_only=True, which rejects arbitrary objects
+                "args": {k: v for k, v in vars(args).items()
+                         if isinstance(v, (int, float, str, bool))}},
+               args.out)
+    print(f"saved {args.out}  ({time.time()-t0:.0f}s total)  "
+          f"final-100 loss {sum(losses[-100:])/100:.4f}")
 
 
 if __name__ == "__main__":
