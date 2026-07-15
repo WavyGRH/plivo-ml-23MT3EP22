@@ -98,23 +98,84 @@ regression, and worse than the untouched baseline's 2.3718.**
 Final-100 train loss 1.8200 vs Run 1's 1.6559 — behind for the whole run, not
 just at the end.
 
-**Conclusion:** The textbook recipe is tuned for a regime this run is not in.
-Both changes shrink the init, and they compound: std drops 2.5x (0.05 -> 0.02),
-then residual projections take a further 1/sqrt(8) = 0.354x, landing at
-std 0.0071 — about 7x smaller than baseline. That makes every block start near
-the identity, which is exactly what you want when training a deep network for
-many thousands of steps, because it keeps the residual stream well-conditioned
-long enough to learn. Here there is no "long enough": with 2,000 steps and only
-4 layers, there is no depth pathology to protect against, and the model instead
-burns a large share of its fixed budget just re-growing weights to a useful
-scale before it can fit anything. Small init is a stability investment that pays
-back over a long run — and this run is too short to collect. Directionally, that
-is the same lesson as Run 1 (the step cap dominates), arrived at from the
-opposite side.
+**Conclusion (FIRST ATTEMPT — later falsified, kept to show the correction):**
+"The textbook recipe is tuned for a regime this run is not in. Both changes
+shrink the init and compound: std drops 2.5x (0.05 -> 0.02), then residual
+projections take a further 1/sqrt(8) = 0.354x, landing at std 0.0071 — ~7x
+smaller than baseline. Every block starts near the identity, which is what you
+want when training deep networks for many thousands of steps. Here there is no
+'long enough': the model burns a large share of a fixed budget re-growing
+weights to a useful scale before it can fit anything."
 
-**Follow-up required:** this bundled two changes, so it does not yet say *which*
-one hurt, or whether one of them helps alone. Runs 2a/2b disentangle them.
-Run 6 tests the inversion: if the diagnosis is right, a *larger* init should win.
+**That explanation makes a testable prediction: if the problem is that the init
+is too small, then a LARGER init should win.** Run 6 tested exactly that with
+init_std 0.08 and got **2.0626 — also worse** than 0.05's 1.9924.
+
+**Revised conclusion:** the prediction failed, so the explanation is wrong, or
+at least unsupported. What the three points actually show is a local optimum:
+
+| init_std | dev bpb | vs 0.05 |
+|---------:|--------:|--------:|
+| 0.02 (+resid_scale) | 2.4255 | +0.4331 |
+| **0.05 (baseline)** | **1.9924** | — |
+| 0.08 | 2.0626 | +0.0702 |
+
+Moving in *either* direction hurts, asymmetrically — smaller is punished harder
+than larger. The honest read is that the baseline's init is not a defect at all;
+0.05 is close to well-chosen for this width and depth, and I assumed otherwise
+because flat N(0, 0.05) does not match the GPT-2 convention I pattern-matched
+to. Importing a recipe from a different scale, without checking that its
+premises hold here, is the actual mistake — and it is the same mistake in both
+directions, which is why the inversion failed too. The brief calls the baseline
+"mediocre on purpose"; that does not mean every line of it is wrong, and
+assuming so cost two runs.
+
+**Still unresolved:** Run 2 bundled init_std AND resid_scale, so it cannot say
+which half did the damage, or whether resid_scale alone is harmless. Runs 2a/2b
+isolate them. Bundling two changes in one run was a methodology error — the
+brief says change one thing at a time, and this is what it costs when you do not.
+
+---
+
+## Run 5 — LR retune for the BPE regime (FAILED)
+
+**Hypothesis:** lr 1e-3 was tuned in Run 1 against the *byte* model. Run 3
+changed the vocabulary 16-fold and tied the head to the embedding, which is a
+materially different loss surface — the earlier optimum should have moved.
+
+**What changed:** lr 1e-3 -> 2e-3. Everything else as Run 4.
+
+**Result:** dev **bpb 2.0003** vs Run 4's 1.9924. **Delta +0.0079.**
+
+**Conclusion:** Rejected, but only just — +0.0079 is small, though ~10x the
+0.0008 noise floor established by the Control, so it is a real if minor
+regression. The premise was reasonable and simply did not hold: 1e-3 survives
+the tokenizer change intact. Worth noting the asymmetry in what tuning bought
+here — the *schedule* (Run 1) was worth -0.0983, while the *peak value* it
+anneals from is already right. The baseline's defect was never the number 3e-4;
+it was that the number never changed.
+
+---
+
+## Run 6 — invert Run 2: bigger init, not smaller (FAILED)
+
+**Hypothesis:** stated above, from Run 2's first conclusion. If a short budget
+punishes small init because the model wastes steps growing weights, then
+init_std 0.08 should beat 0.05.
+
+**What changed:** init_std 0.05 -> 0.08, no residual scaling. Otherwise Run 4.
+
+**Result:** dev **bpb 2.0626** vs 1.9924. **Delta +0.0702.**
+
+**Conclusion:** Prediction falsified — see Run 2's revised conclusion, which
+this run forced. The value of this run is entirely negative-result: it killed a
+plausible, confident, wrong story. Had it not been run, Run 2's explanation
+would have gone into the write-up sounding authoritative and being unsupported.
+
+**Broader pattern (runs 2, 5, 6):** every attempt to tune a baseline
+*hyperparameter* has failed. All the gains so far come from the schedule, the
+tokenizer, and context width — structural choices, not constants. The baseline
+is mediocre precisely and only where the brief hints it is.
 
 ---
 
