@@ -95,13 +95,18 @@ class SelfAttention(nn.Module):
 
 
 class SwiGLU(nn.Module):
-    """Gated MLP. hidden = 8/3 * n_embd keeps the parameter count equal to the
-    baseline's 4x GELU MLP (3 * n * 8n/3 == 8n^2), so any difference measured
-    against GELU is the gating, not extra capacity."""
+    """Gated MLP. SwiGLU needs three matrices where GELU needs two, so the
+    expansion factor must drop from 4x to 8/3 to keep the parameter count equal:
+    3 * d * (8d/3) == 8d^2. Otherwise a SwiGLU "win" is just extra capacity.
+
+    Rounded DOWN to a multiple of 8 (426.67 -> 424), which leaves SwiGLU 5,120
+    params BELOW the GELU baseline rather than above it. Rounding up would have
+    handed it +11,136 (+0.58%) and quietly contaminated the comparison; erring
+    low means any measured gain is attributable to the gating, not the budget."""
     def __init__(self, cfg):
         super().__init__()
         hidden = int(8 * cfg.n_embd / 3)
-        hidden += (-hidden) % 8            # round up to a multiple of 8
+        hidden -= hidden % 8               # round DOWN to a multiple of 8
         self.gate = nn.Linear(cfg.n_embd, hidden)
         self.up = nn.Linear(cfg.n_embd, hidden)
         self.down = nn.Linear(hidden, cfg.n_embd)

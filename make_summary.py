@@ -91,6 +91,10 @@ def main():
         for r in runs)
 
     improvement = f"{(best-base)/base*100:+.1f}%" if base and best else "—"
+    label = {"H": "Human", "M": "Machine"}
+    att_rows = "".join(
+        f"<tr><td>{what}</td><td><b>{label[who]}</b></td></tr>"
+        for what, who in ATTRIBUTION)
 
     doc = TEMPLATE.format(
         base=f"{base:.4f}" if base else "—",
@@ -104,6 +108,8 @@ def main():
         run_cards=run_cards,
         notes=html.escape(notes),
         n_runs=len(scored),
+        attribution=att_rows,
+        att_summary=ATT_SUMMARY,
     )
     open("SUMMARY.html", "w", encoding="utf-8").write(doc)
     print(f"wrote SUMMARY.html  ({len(doc):,} bytes, {len(scored)} scored runs)")
@@ -192,8 +198,55 @@ train_corpus.txt only, pure PyTorch.</p>
 <h2>Run-by-run reasoning ({n_runs} scored runs)</h2>
 {run_cards}
 
+<h2>Machine-done vs human-done</h2>
+<p>The brief permits AI coding assistants and requires this section to be
+honest, so it is written to be accurate rather than flattering. This work used
+Claude Code (Opus 4.8) throughout.</p>
+<div class="scroll"><table class="att">
+<thead><tr><th>Contribution</th><th>By</th></tr></thead>
+<tbody>{attribution}</tbody></table></div>
+<p><b>Summary in one line:</b> {att_summary}</p>
+
 </body></html>
 """
+
+
+# Honest attribution. H = Devangan (human), M = Claude Code (machine).
+ATTRIBUTION = [
+    ("Track selection; environment setup and verification; repo and remote", "H"),
+    ("Deadline discipline and submission constraints; instruction not to "
+     "violate any evaluation criteria", "H"),
+    ("Strategic direction: asked for the option space, then pushed for more "
+     "ambition ('look for more ways') rather than accepting safe tuning", "H"),
+    ("Chose the working split (human picks, machine executes) and set "
+     "priorities between runs", "H"),
+    ("Questions that redirected the work: whether handout files must be "
+     "pushed; whether the 2,000-step cap was being honoured; the RMSNorm + "
+     "tying cost analysis; and the request to verify committed work against "
+     "the caps &mdash; which is what surfaced the tied-weight "
+     "double-counting risk", "H"),
+    ("Reading the brief; extracting caps, frozen interfaces and deliverables; "
+     "corpus measurement (Devanagari share, bytes/token, corpus coverage)", "M"),
+    ("All code: BPE tokenizer and its training, losslessness test suite, "
+     "Muon optimizer, RoPE / RMSNorm / SwiGLU, trainer refactor, "
+     "this summary generator", "M"),
+    ("All hypotheses, experiment design, and run execution", "M"),
+    ("All RUNLOG.md analysis and conclusions, including diagnosing and "
+     "correcting its own falsified explanation of Run 2", "M"),
+    ("Parameter-cap arithmetic; compliance auditing; catching two "
+     "self-inflicted bugs (overwriting modules mid-run; queueing runs on a "
+     "known-bad config)", "M"),
+]
+
+ATT_SUMMARY = (
+    "Substantially machine-executed. Every line of code, every hypothesis, and "
+    "every RUNLOG conclusion was produced by Claude Code. The human "
+    "contribution was direction rather than implementation: choosing the "
+    "track and the working method, enforcing the caps and the deadline, "
+    "pushing for ambitious swings over safe tuning, and asking the "
+    "verification questions that caught a disqualification-level risk. "
+    "Presenting this as primarily human work would be false."
+)
 
 if __name__ == "__main__":
     main()
