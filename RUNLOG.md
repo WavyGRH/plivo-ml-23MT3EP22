@@ -309,6 +309,46 @@ worth more than its score suggests.
 
 ---
 
+## Run 9 — RoPE instead of learned positional embeddings
+
+**Hypothesis:** two reasons, one budgetary and one about learning dynamics.
+Budget: the learned pos_emb table costs block_size x n_embd, so at block 512 it
+is 81,920 params and the model sits at 98.7% of cap with no headroom for
+anything else; RoPE has *no* position parameters, and is block-size independent
+(measured: 1,892,800 params at block 256, 512, 1024 and 2048 alike). Dynamics:
+Run 10's rule says techniques whose benefit is *immediate* win under a step cap
+while *amortised* ones lose — and a learned pos_emb is amortised almost by
+definition, because every row must be trained before it means anything.
+
+**What changed:** pos = learned -> rope. Block stays 256, so the comparison is
+against Run 4's 1.9924 directly. Nothing else touched.
+
+**Result:** dev **bpb 1.8184** (from 1.9924). **Delta -0.1740** — the second
+largest single result of the run, behind only BPE. 1,892,800 params: 40,960
+*fewer* than the control. 215 ms/step (vs 193 — rotation costs ~11%).
+
+**Conclusion:** Confirmed, and larger than expected. The headline comparison is
+the one worth keeping: **RoPE at block 256 (1.8184) beats learned positions at
+block 512 (1.9582)** — a better score with half the context, less compute and
+fewer parameters. Buying context by widening a learned table was the expensive
+way to solve a problem that was really about *how* position is represented.
+
+This is the cleanest confirmation of Run 10's rule, and it was predicted in
+advance rather than rationalised afterwards. A learned pos_emb must discover
+what "position 400" means from gradient signal; each row is only trained when
+sampled, and with 2,000 steps there is not enough signal to learn 512 of them
+well. RoPE encodes relative position structurally — correct on step 1, and it
+never spends a single step learning it. Amortised vs immediate predicts the
+sign and roughly the size of every architecture result here: init scaling
+(amortised, lost), learned positions (amortised, lost heavily), gating
+(immediate, won), compression (immediate, won biggest).
+
+Secondary benefit that matters at 98.7% of cap: RoPE refunds 81,920 params at
+block 512 and decouples block_size from the parameter budget entirely, so
+context becomes a pure compute decision.
+
+---
+
 ## Candidate levers (identified, not yet tested)
 
 Ranked by expected effect. Nothing here is a result — these are hypotheses
