@@ -51,18 +51,32 @@ def lr_at(step, args):
 
 
 def build_optimizer(model, args):
+    """Returns a list of optimizers; all of them get stepped each step."""
     if args.opt == "adam":
-        return torch.optim.Adam(model.parameters(), lr=args.lr)
+        return [torch.optim.Adam(model.parameters(), lr=args.lr)]
+
+    if args.opt == "muon":
+        from optim import Muon, split_params
+        muon_p, other_p = split_params(model)
+        n_m = sum(p.numel() for p in muon_p)
+        n_o = sum(p.numel() for p in other_p)
+        print(f"muon: {len(muon_p)} matrices / {n_m:,} params | "
+              f"adamw: {len(other_p)} tensors / {n_o:,} params")
+        return [Muon(muon_p, lr=args.muon_lr, momentum=args.muon_momentum,
+                     ns_steps=args.ns_steps, weight_decay=args.wd),
+                torch.optim.AdamW(other_p, lr=args.lr, weight_decay=0.0,
+                                  betas=(args.beta1, args.beta2))]
+
     # Decay only matrices; leave norms, biases and embeddings undecayed.
     decay, no_decay = [], []
     for name, p in model.named_parameters():
         if not p.requires_grad:
             continue
         (decay if p.dim() >= 2 and "emb" not in name else no_decay).append(p)
-    return torch.optim.AdamW(
+    return [torch.optim.AdamW(
         [{"params": decay, "weight_decay": args.wd},
          {"params": no_decay, "weight_decay": 0.0}],
-        lr=args.lr, betas=(args.beta1, args.beta2))
+        lr=args.lr, betas=(args.beta1, args.beta2))]
 
 
 def main():
@@ -74,7 +88,12 @@ def main():
                     help="sequence length; default = Config.block_size")
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--min_lr", type=float, default=0.0)
-    ap.add_argument("--opt", choices=["adam", "adamw"], default="adam")
+    ap.add_argument("--opt", choices=["adam", "adamw", "muon"], default="adam")
+    ap.add_argument("--muon_lr", type=float, default=0.02,
+                    help="Muon lr for 2D hidden matrices (--lr still drives "
+                         "the AdamW group holding embeddings/norms/biases)")
+    ap.add_argument("--muon_momentum", type=float, default=0.95)
+    ap.add_argument("--ns_steps", type=int, default=5)
     ap.add_argument("--schedule", choices=["none", "cosine", "linear"],
                     default="none")
     ap.add_argument("--warmup", type=int, default=0)
@@ -118,26 +137,34 @@ def main():
           f"will see {seen:,} tokens = {seen/len(ids)*100:.1f}% of corpus")
     assert n <= MAX_PARAMS, f"cap: max {MAX_PARAMS:,} params (got {n:,})"
 
-    opt = build_optimizer(model, args)
+    opts = build_optimizer(model, args)
+    # Each group keeps its own base LR (Muon's differs from AdamW's by ~20x),
+    # and the schedule scales all of them by the same factor.
+    for o in opts:
+        for g in o.param_groups:
+            g["base_lr"] = g["lr"]
 
     model.train()
     t0 = time.time()
     losses = []
     for step in range(1, args.steps + 1):
-        lr = lr_at(step, args)
-        for g in opt.param_groups:
-            g["lr"] = lr
+        scale = lr_at(step, args) / args.lr
+        for o in opts:
+            for g in o.param_groups:
+                g["lr"] = g["base_lr"] * scale
         x, y = get_batch(ids, cfg.block_size, args.batch, device, gen)
         _, loss = model(x, y)
-        opt.zero_grad(set_to_none=True)
+        for o in opts:
+            o.zero_grad(set_to_none=True)
         loss.backward()
         if args.clip > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
-        opt.step()
+        for o in opts:
+            o.step()
         losses.append(loss.item())
         if step % args.log_every == 0 or step == 1:
             avg = sum(losses[-args.log_every:]) / len(losses[-args.log_every:])
-            print(f"step {step:5d}  loss {avg:.4f}  lr {lr:.2e}  "
+            print(f"step {step:5d}  loss {avg:.4f}  scale {scale:.3f}  "
                   f"({(time.time()-t0)/step*1000:.0f} ms/step)")
 
     torch.save({"model": model.state_dict(),
