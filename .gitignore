@@ -6,3 +6,4 @@ ckpt_baseline.pt
 ckpt_*.pt
 !ckpt.pt
 __pycache__/
+bpe_merges_[0-9]*.json

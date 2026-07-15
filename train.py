@@ -111,6 +111,8 @@ def main():
     ap.add_argument("--n_layer", type=int, default=None)
     ap.add_argument("--n_embd", type=int, default=None)
     ap.add_argument("--n_head", type=int, default=None)
+    ap.add_argument("--d_qk", type=int, default=None,
+                    help="query/key head dim; default n_embd//n_head")
     ap.add_argument("--seed", type=int, default=1337)
     ap.add_argument("--out", default="ckpt.pt")
     ap.add_argument("--log_every", type=int, default=100)
@@ -136,6 +138,7 @@ def main():
     cfg.init_std = args.init_std
     cfg.resid_scale = args.resid_scale
     cfg.norm, cfg.pos, cfg.mlp = args.norm, args.pos, args.mlp
+    cfg.d_qk = args.d_qk
     if args.n_layer is not None:
         cfg.n_layer = args.n_layer
     if args.n_embd is not None:

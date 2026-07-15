@@ -29,6 +29,7 @@ class Config:
     norm = "layer"
     pos = "learned"
     mlp = "gelu"
+    d_qk = None           # query/key head dim; None => n_embd // n_head
 
 
 class RMSNorm(nn.Module):
@@ -67,25 +68,51 @@ def apply_rope(x, cos, sin):
 
 
 class SelfAttention(nn.Module):
+    """Multi-head causal self-attention.
+
+    d_qk decouples the query/key head dim from the value head dim. Standard
+    transformers weld both to n_embd/n_head, but attention scores only need
+    enough dimensions to *route* — the value path is what carries content. A
+    narrower d_qk shrinks Wq and Wk (2 x n_embd x n_head x d_qk) while leaving
+    Wv and the output projection untouched. F.scaled_dot_product_attention
+    accepts a different head dim for V than for Q/K, and scales scores by
+    1/sqrt(d_qk) automatically from q's last dim.
+    """
     def __init__(self, cfg):
         super().__init__()
         self.n_head = cfg.n_head
+        self.head_dim = cfg.n_embd // cfg.n_head
+        self.d_qk = getattr(cfg, "d_qk", None) or self.head_dim
+        # keep the fused qkv when undecoupled: identical params AND identical
+        # state_dict keys, so older checkpoints still load
+        self.decoupled = self.d_qk != self.head_dim
         self.use_rope = cfg.pos == "rope"
-        self.qkv = nn.Linear(cfg.n_embd, 3 * cfg.n_embd)
+        if self.decoupled:
+            self.wq = nn.Linear(cfg.n_embd, cfg.n_head * self.d_qk)
+            self.wk = nn.Linear(cfg.n_embd, cfg.n_head * self.d_qk)
+            self.wv = nn.Linear(cfg.n_embd, cfg.n_embd)
+        else:
+            self.qkv = nn.Linear(cfg.n_embd, 3 * cfg.n_embd)
         self.proj = nn.Linear(cfg.n_embd, cfg.n_embd)
         self.drop = nn.Dropout(cfg.dropout)
         if self.use_rope:
-            cos, sin = rope_tables(cfg.block_size, cfg.n_embd // cfg.n_head)
+            cos, sin = rope_tables(cfg.block_size, self.d_qk)
             # buffers, not parameters: not trained, not counted, not saved
             self.register_buffer("rope_cos", cos, persistent=False)
             self.register_buffer("rope_sin", sin, persistent=False)
 
     def forward(self, x):
         B, T, C = x.shape
-        q, k, v = self.qkv(x).split(C, dim=2)
-        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        nh, dqk, dv = self.n_head, self.d_qk, self.head_dim
+        if self.decoupled:
+            q = self.wq(x).view(B, T, nh, dqk).transpose(1, 2)
+            k = self.wk(x).view(B, T, nh, dqk).transpose(1, 2)
+            v = self.wv(x).view(B, T, nh, dv).transpose(1, 2)
+        else:
+            q, k, v = self.qkv(x).split(C, dim=2)
+            q = q.view(B, T, nh, dv).transpose(1, 2)
+            k = k.view(B, T, nh, dv).transpose(1, 2)
+            v = v.view(B, T, nh, dv).transpose(1, 2)
         if self.use_rope:
             q = apply_rope(q, self.rope_cos, self.rope_sin)
             k = apply_rope(k, self.rope_cos, self.rope_sin)
